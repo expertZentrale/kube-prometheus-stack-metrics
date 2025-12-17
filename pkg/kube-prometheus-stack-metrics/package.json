@@ -1,7 +1,7 @@
 {
   "name": "kube-prometheus-stack-metrics",
   "description": "kube-prometheus-stack-metrics plugin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "rancher": {
     "annotations": {

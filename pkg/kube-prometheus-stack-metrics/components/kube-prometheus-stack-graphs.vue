@@ -280,35 +280,35 @@ const error = ref('');
 
 // Check if kube-prometheus-stack is available in the cluster
 async function checkPrometheusAvailability() {
-	console.log('[ExpertMetrics] Checking Prometheus availability for cluster:', clusterId.value);
+	console.log('[kube-prometheus-stack-metrics] Checking Prometheus availability for cluster:', clusterId.value);
 	isCheckingAvailability.value = true;
 	
 	try {
 		const url = `/k8s/clusters/${clusterId.value}/api/v1/namespaces/prometheus/services/kube-prometheus-stack-prometheus`;
-		console.log('[ExpertMetrics] Checking service at:', url);
+		console.log('[kube-prometheus-stack-metrics] Checking service at:', url);
 		
 		const res = await fetch(url, { 
 			method: 'GET', 
 			headers: { 'Accept': 'application/json' } 
 		});
 		
-		console.log('[ExpertMetrics] Service check response status:', res.status);
+		console.log('[kube-prometheus-stack-metrics] Service check response status:', res.status);
 		
 		if (res.ok) {
 			const data = await res.json();
-			console.log('[ExpertMetrics] Prometheus service found:', data?.metadata?.name);
+			console.log('[kube-prometheus-stack-metrics] Prometheus service found:', data?.metadata?.name);
 			isPrometheusAvailable.value = true;
 		} else {
 			const errorText = await res.text();
-			console.warn('[ExpertMetrics] Prometheus service not found:', res.status, errorText);
+			console.warn('[kube-prometheus-stack-metrics] Prometheus service not found:', res.status, errorText);
 			isPrometheusAvailable.value = false;
 		}
 	} catch (e) {
-		console.error('[ExpertMetrics] Error checking Prometheus availability:', e);
+		console.error('[kube-prometheus-stack-metrics] Error checking Prometheus availability:', e);
 		isPrometheusAvailable.value = false;
 	} finally {
 		isCheckingAvailability.value = false;
-		console.log('[ExpertMetrics] Prometheus available:', isPrometheusAvailable.value);
+		console.log('[kube-prometheus-stack-metrics] Prometheus available:', isPrometheusAvailable.value);
 	}
 }
 
@@ -318,7 +318,7 @@ function parseWindow(win) {
 	const dur = map[win] || map['1h'];
 	// Target at least 598 data points for smooth visualization
 	const stepSec = Math.max(1, Math.floor(dur / (598 * 1000)));
-	console.log('[ExpertMetrics] parseWindow:', win, '-> duration:', dur, 'ms, step:', stepSec, 's, expected points:', Math.floor(dur / (stepSec * 1000)));
+	console.log('[kube-prometheus-stack-metrics] parseWindow:', win, '-> duration:', dur, 'ms, step:', stepSec, 's, expected points:', Math.floor(dur / (stepSec * 1000)));
 	return { from: now - dur, to: now, stepSec };
 }
 
@@ -332,20 +332,20 @@ async function promRangeQuery(query, range) {
 	url.searchParams.set('end', String(range.to / 1000));
 	url.searchParams.set('step', String(range.stepSec));
 	const full = url.toString();
-	console.log('[ExpertMetrics] Prometheus query request:', full);
-	console.log('[ExpertMetrics] Query:', query);
-	console.log('[ExpertMetrics] Time range:', new Date(range.from).toISOString(), '->', new Date(range.to).toISOString(), 'step:', range.stepSec, 's');
+	console.log('[kube-prometheus-stack-metrics] Prometheus query request:', full);
+	console.log('[kube-prometheus-stack-metrics] Query:', query);
+	console.log('[kube-prometheus-stack-metrics] Time range:', new Date(range.from).toISOString(), '->', new Date(range.to).toISOString(), 'step:', range.stepSec, 's');
 	
 	const res = await fetch(full);
 	if (!res.ok) {
 		const errorText = await res.text();
-		console.error('[ExpertMetrics] Prometheus query failed:', res.status, errorText);
+		console.error('[kube-prometheus-stack-metrics] Prometheus query failed:', res.status, errorText);
 		throw new Error(`Prometheus ${res.status}: ${errorText}`);
 	}
 	
 	const json = await res.json();
 	const result = json?.data?.result ?? [];
-	console.log('[ExpertMetrics] Query result:', result.length, 'series, points per series:', result[0]?.values?.length || 0);
+	console.log('[kube-prometheus-stack-metrics] Query result:', result.length, 'series, points per series:', result[0]?.values?.length || 0);
 	
 	return result.map(r => ({
 		name: Object.values(r.metric || {}).join(' '),
@@ -360,15 +360,15 @@ function selectorFor(kind, ns, name) {
 }
 
 async function refresh() {
-	console.log('[ExpertMetrics] Refreshing metrics...');
-	console.log('[ExpertMetrics] Resource:', resourceKind.value, resourceName.value, 'in namespace:', namespace.value);
+	console.log('[kube-prometheus-stack-metrics] Refreshing metrics...');
+	console.log('[kube-prometheus-stack-metrics] Resource:', resourceKind.value, resourceName.value, 'in namespace:', namespace.value);
 	
 	try {
 		error.value = '';
 		const range = parseWindow(selectedWindow.value);
 
 		const sel = selectorFor(resourceKind.value, namespace.value, resourceName.value);
-		console.log('[ExpertMetrics] Using selector:', sel);
+		console.log('[kube-prometheus-stack-metrics] Using selector:', sel);
 		
 		const cpuQ = `sum by (pod) (rate(container_cpu_usage_seconds_total{${sel}}[5m]))`;
 		const memQ = `sum by (pod) (container_memory_working_set_bytes{${sel}})`;
@@ -377,7 +377,7 @@ async function refresh() {
 		const rdQ = `sum by (pod) (rate(container_fs_reads_bytes_total{${sel}}[5m]))`;
 		const wrQ = `sum by (pod) (rate(container_fs_writes_bytes_total{${sel}}[5m]))`;
 
-		console.log('[ExpertMetrics] Executing 6 parallel queries...');
+		console.log('[kube-prometheus-stack-metrics] Executing 6 parallel queries...');
 		const startTime = Date.now();
 		
 		const [cpuS, memS, rxS, txS, rdS, wrS] = await Promise.all([
@@ -390,12 +390,12 @@ async function refresh() {
 		]);
 		
 		const elapsed = Date.now() - startTime;
-		console.log('[ExpertMetrics] All queries completed in', elapsed, 'ms');
-		console.log('[ExpertMetrics] Results - CPU:', cpuS.length, 'series, Memory:', memS.length, 'series');
+		console.log('[kube-prometheus-stack-metrics] All queries completed in', elapsed, 'ms');
+		console.log('[kube-prometheus-stack-metrics] Results - CPU:', cpuS.length, 'series, Memory:', memS.length, 'series');
 		
 		cpu.value = cpuS; memory.value = memS; netRx.value = rxS; netTx.value = txS; diskRead.value = rdS; diskWrite.value = wrS;
 	} catch (e) {
-		console.error('[ExpertMetrics] Refresh error:', e);
+		console.error('[kube-prometheus-stack-metrics] Refresh error:', e);
 		error.value = e?.message || String(e);
 	}
 }
@@ -407,25 +407,25 @@ watch(refreshInterval, () => {
 });
 
 onMounted(async () => {
-	console.log('[ExpertMetrics] Component mounted');
-	console.log('[ExpertMetrics] Cluster ID:', clusterId.value);
-	console.log('[ExpertMetrics] Resource:', { kind: resourceKind.value, namespace: namespace.value, name: resourceName.value });
-	console.log('[ExpertMetrics] Props received:', props.resource);
+	console.log('[kube-prometheus-stack-metrics] Component mounted');
+	console.log('[kube-prometheus-stack-metrics] Cluster ID:', clusterId.value);
+	console.log('[kube-prometheus-stack-metrics] Resource:', { kind: resourceKind.value, namespace: namespace.value, name: resourceName.value });
+	console.log('[kube-prometheus-stack-metrics] Props received:', props.resource);
 	
 	// First check if Prometheus is available
 	await checkPrometheusAvailability();
 	
 	// Only fetch metrics if available
 	if (isPrometheusAvailable.value) {
-		console.log('[ExpertMetrics] Prometheus available, fetching initial metrics...');
+		console.log('[kube-prometheus-stack-metrics] Prometheus available, fetching initial metrics...');
 		refresh();
 	} else {
-		console.log('[ExpertMetrics] Prometheus not available, skipping metrics fetch');
+		console.log('[kube-prometheus-stack-metrics] Prometheus not available, skipping metrics fetch');
 	}
 });
 
 onUnmounted(() => { 
-	console.log('[ExpertMetrics] Component unmounting, clearing timer');
+	console.log('[kube-prometheus-stack-metrics] Component unmounting, clearing timer');
 	if (timer) clearInterval(timer); 
 });
 </script>
