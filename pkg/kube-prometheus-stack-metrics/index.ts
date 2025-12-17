@@ -25,7 +25,7 @@ export default function(plugin: IPlugin): void {
       name:       'expert-metrics',
       label:      'expert Metrics',
       showHeader: false,
-      weight:     50,
+      weight:     2,
       component:  () => import('./components/kube-prometheus-stack-graphs.vue'),
     }
   );
