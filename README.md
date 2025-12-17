@@ -2,22 +2,20 @@
 
 A Rancher UI Extension (v3) that adds a metrics tab to Deployments, StatefulSets, DaemonSets, ReplicaSets, Jobs, CronJobs, and Pods. The extension displays CPU, memory, network, and disk metrics from [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) with interactive charts.
 
-## 🔄 Replaces Rancher Monitoring
+## 📊 Workload Metrics for Rancher UI
 
-> **Note:** Starting with Rancher 2.10, the built-in **rancher-monitoring** integration has been moved to [Rancher Prime](https://www.rancher.com/products/rancher-platform), which is a paid subscription service.
+> **Background:** Starting with Rancher 2.10, the built-in **rancher-monitoring** integration has been moved to [Rancher Prime](https://www.rancher.com/products/rancher-platform), a paid subscription service. This means the workload metrics tab that was previously available in the Rancher UI is no longer included in the free version.
 
-This extension provides a **free, open-source alternative** for users who want workload metrics visualization without a Rancher Prime subscription. It leverages the community-maintained [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) Helm chart, which remains free and actively maintained.
+This extension **restores the workload metrics dashboard** in the Rancher UI for users running the community [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack). It provides the same metrics visualization experience directly in the resource detail views—without requiring a Rancher Prime subscription.
 
-### Why use this extension?
+### What this extension provides
 
-| Feature | rancher-monitoring (Prime) | kube-prometheus-stack-metrics |
-|---------|---------------------------|-------------------------------|
-| Cost | Paid (Rancher Prime subscription) | Free & Open Source |
-| Prometheus Stack | Bundled | Uses community kube-prometheus-stack |
-| Workload Metrics Tab | ✅ | ✅ |
-| CPU/Memory/Network/Disk | ✅ | ✅ |
-| Interactive Charts | ✅ | ✅ |
-| Auto-refresh | ✅ | ✅ |
+| Feature | Description |
+|---------|-------------|
+| Workload Metrics Tab | Adds a metrics tab to Deployments, StatefulSets, Pods, etc. |
+| CPU/Memory/Network/Disk | Displays key resource metrics with interactive charts |
+| Prometheus Integration | Queries metrics from your existing kube-prometheus-stack |
+| Free & Open Source | No subscription required |
 
 ## Table of Contents
 
