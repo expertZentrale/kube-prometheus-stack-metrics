@@ -1,0 +1,7 @@
+plugin/kube-prometheus-stack-metrics-0.1.0.umd.min.209.js
+plugin/kube-prometheus-stack-metrics-0.1.0.umd.min.209.js.map
+plugin/kube-prometheus-stack-metrics-0.1.0.umd.min.324.js
+plugin/kube-prometheus-stack-metrics-0.1.0.umd.min.324.js.map
+plugin/kube-prometheus-stack-metrics-0.1.0.umd.min.js
+plugin/kube-prometheus-stack-metrics-0.1.0.umd.min.js.map
+plugin/package.json
