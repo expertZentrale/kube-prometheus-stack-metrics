@@ -1,32 +1,57 @@
 <template>
 	<div class="page expert-metrics">
-		<header class="page-header">
-			<h1>Expert Metrics</h1>
-			<div class="controls">
-				<label>
-					Timeframe
-					<select v-model="selectedWindow">
-						<option value="15m">15m</option>
-						<option value="1h">1h</option>
-						<option value="6h">6h</option>
-						<option value="24h">24h</option>
-					</select>
-				</label>
-				<label>
-					Refresh
-					<select v-model.number="refreshInterval">
-						<option :value="0">Off</option>
-						<option :value="15">15s</option>
-						<option :value="30">30s</option>
-						<option :value="60">60s</option>
-					</select>
-				</label>
-				<button @click="refresh">Refresh</button>
-			</div>
-			<div class="debug">Resource: {{ resourceName }} ({{ resourceKind }}) — Namespace: {{ namespace }}</div>
-		</header>
+		<!-- Loading state -->
+		<div v-if="isCheckingAvailability" class="availability-check">
+			<div class="loading-spinner"></div>
+			<p>Checking kube-prometheus-stack availability...</p>
+		</div>
 
-		<section class="grid">
+		<!-- Not available state -->
+		<div v-else-if="!isPrometheusAvailable" class="not-available">
+			<div class="not-available-icon">📊</div>
+			<h2>Metrics Not Available</h2>
+			<p class="not-available-message">
+				The <strong>kube-prometheus-stack</strong> service is not available in this cluster.
+			</p>
+			<p class="not-available-details">
+				To enable metrics visualization, please install the kube-prometheus-stack Helm chart in the <code>prometheus</code> namespace.
+			</p>
+			<div class="not-available-help">
+				<p><strong>Installation:</strong></p>
+				<code class="install-command">helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack -n prometheus --create-namespace</code>
+			</div>
+			<button class="retry-btn" @click="checkPrometheusAvailability">Retry</button>
+		</div>
+
+		<!-- Available state - show metrics -->
+		<template v-else>
+			<header class="page-header">
+				<h1>Expert Metrics</h1>
+				<div class="controls">
+					<label>
+						Timeframe
+						<select v-model="selectedWindow">
+							<option value="15m">15m</option>
+							<option value="1h">1h</option>
+							<option value="6h">6h</option>
+							<option value="24h">24h</option>
+						</select>
+					</label>
+					<label>
+						Refresh
+						<select v-model.number="refreshInterval">
+							<option :value="0">Off</option>
+							<option :value="15">15s</option>
+							<option :value="30">30s</option>
+							<option :value="60">60s</option>
+						</select>
+					</label>
+					<button @click="refresh">Refresh</button>
+				</div>
+				<div class="debug">Resource: {{ resourceName }} ({{ resourceKind }}) — Namespace: {{ namespace }} — Cluster: {{ clusterId }}</div>
+			</header>
+
+			<section class="grid">
 			<article>
 				<h3>CPU (cores)</h3>
 				<ChartSeries :series="cpu" color="#2b8" unit="cores" />
@@ -57,9 +82,10 @@
 				<ChartSeries :series="diskWrite" color="#822" unit="bytes/s" />
 				<SummaryRow :series="diskWrite" unit="bytes/s" />
 			</article>
-		</section>
+			</section>
 
-		<div v-if="error" class="error">{{ error }}</div>
+			<div v-if="error" class="error">{{ error }}</div>
+		</template>
 	</div>
 </template>
 
@@ -228,6 +254,16 @@ const selectedWindow = ref('1h');
 const refreshInterval = ref(30);
 let timer = null;
 
+// Availability state
+const isCheckingAvailability = ref(true);
+const isPrometheusAvailable = ref(false);
+
+// Cluster ID
+const clusterId = computed(() => {
+	const pathMatch = window.location.pathname.match(/\/(?:c|k8s\/clusters)\/([^/]+)/);
+	return pathMatch?.[1] || 'local';
+});
+
 // Resource context
 const resourceKind = computed(() => props.resource?.kind || props.resource?.type || 'Deployment');
 const resourceName = computed(() => props.resource?.metadata?.name || props.resource?.name || 'sample');
@@ -242,34 +278,75 @@ const diskRead = ref([]);
 const diskWrite = ref([]);
 const error = ref('');
 
+// Check if kube-prometheus-stack is available in the cluster
+async function checkPrometheusAvailability() {
+	console.log('[ExpertMetrics] Checking Prometheus availability for cluster:', clusterId.value);
+	isCheckingAvailability.value = true;
+	
+	try {
+		const url = `/k8s/clusters/${clusterId.value}/api/v1/namespaces/prometheus/services/kube-prometheus-stack-prometheus`;
+		console.log('[ExpertMetrics] Checking service at:', url);
+		
+		const res = await fetch(url, { 
+			method: 'GET', 
+			headers: { 'Accept': 'application/json' } 
+		});
+		
+		console.log('[ExpertMetrics] Service check response status:', res.status);
+		
+		if (res.ok) {
+			const data = await res.json();
+			console.log('[ExpertMetrics] Prometheus service found:', data?.metadata?.name);
+			isPrometheusAvailable.value = true;
+		} else {
+			const errorText = await res.text();
+			console.warn('[ExpertMetrics] Prometheus service not found:', res.status, errorText);
+			isPrometheusAvailable.value = false;
+		}
+	} catch (e) {
+		console.error('[ExpertMetrics] Error checking Prometheus availability:', e);
+		isPrometheusAvailable.value = false;
+	} finally {
+		isCheckingAvailability.value = false;
+		console.log('[ExpertMetrics] Prometheus available:', isPrometheusAvailable.value);
+	}
+}
+
 function parseWindow(win) {
 	const now = Date.now();
 	const map = { '15m': 15*60*1000, '1h': 60*60*1000, '6h': 6*60*60*1000, '24h': 24*60*60*1000 };
 	const dur = map[win] || map['1h'];
 	// Target at least 598 data points for smooth visualization
 	const stepSec = Math.max(1, Math.floor(dur / (598 * 1000)));
+	console.log('[ExpertMetrics] parseWindow:', win, '-> duration:', dur, 'ms, step:', stepSec, 's, expected points:', Math.floor(dur / (stepSec * 1000)));
 	return { from: now - dur, to: now, stepSec };
 }
 
 
 async function promRangeQuery(query, range) {
-	// Get cluster ID from current URL path (e.g., /c/c-m-xxxxx/... or /k8s/clusters/c-xxxxx/...)
-	const pathMatch = window.location.pathname.match(/\/(?:c|k8s\/clusters)\/([^/]+)/);
-	const clusterId = pathMatch?.[1] || 'local';
-	
-	// Build Rancher proxy URL dynamically
-	const base = `/k8s/clusters/${clusterId}/api/v1/namespaces/prometheus/services/http:kube-prometheus-stack-prometheus:9090/proxy`;
+	// Build Rancher proxy URL dynamically using computed clusterId
+	const base = `/k8s/clusters/${clusterId.value}/api/v1/namespaces/prometheus/services/http:kube-prometheus-stack-prometheus:9090/proxy`;
 	const url = new URL(window.location.origin + base + '/api/v1/query_range');
 	url.searchParams.set('query', query);
 	url.searchParams.set('start', String(range.from / 1000));
 	url.searchParams.set('end', String(range.to / 1000));
 	url.searchParams.set('step', String(range.stepSec));
 	const full = url.toString();
-	console.log('[ExpertMetrics] Prometheus request:', full, '(cluster:', clusterId, ')');
+	console.log('[ExpertMetrics] Prometheus query request:', full);
+	console.log('[ExpertMetrics] Query:', query);
+	console.log('[ExpertMetrics] Time range:', new Date(range.from).toISOString(), '->', new Date(range.to).toISOString(), 'step:', range.stepSec, 's');
+	
 	const res = await fetch(full);
-	if (!res.ok) throw new Error(`Prometheus ${res.status}: ${await res.text()}`);
+	if (!res.ok) {
+		const errorText = await res.text();
+		console.error('[ExpertMetrics] Prometheus query failed:', res.status, errorText);
+		throw new Error(`Prometheus ${res.status}: ${errorText}`);
+	}
+	
 	const json = await res.json();
 	const result = json?.data?.result ?? [];
+	console.log('[ExpertMetrics] Query result:', result.length, 'series, points per series:', result[0]?.values?.length || 0);
+	
 	return result.map(r => ({
 		name: Object.values(r.metric || {}).join(' '),
 		points: (r.values || []).map(([ts, val]) => ({ t: ts*1000, v: parseFloat(val) })),
@@ -283,11 +360,16 @@ function selectorFor(kind, ns, name) {
 }
 
 async function refresh() {
+	console.log('[ExpertMetrics] Refreshing metrics...');
+	console.log('[ExpertMetrics] Resource:', resourceKind.value, resourceName.value, 'in namespace:', namespace.value);
+	
 	try {
 		error.value = '';
 		const range = parseWindow(selectedWindow.value);
 
 		const sel = selectorFor(resourceKind.value, namespace.value, resourceName.value);
+		console.log('[ExpertMetrics] Using selector:', sel);
+		
 		const cpuQ = `sum by (pod) (rate(container_cpu_usage_seconds_total{${sel}}[5m]))`;
 		const memQ = `sum by (pod) (container_memory_working_set_bytes{${sel}})`;
 		const rxQ = `sum by (pod) (rate(container_network_receive_bytes_total{${sel}}[5m]))`;
@@ -295,6 +377,9 @@ async function refresh() {
 		const rdQ = `sum by (pod) (rate(container_fs_reads_bytes_total{${sel}}[5m]))`;
 		const wrQ = `sum by (pod) (rate(container_fs_writes_bytes_total{${sel}}[5m]))`;
 
+		console.log('[ExpertMetrics] Executing 6 parallel queries...');
+		const startTime = Date.now();
+		
 		const [cpuS, memS, rxS, txS, rdS, wrS] = await Promise.all([
 			promRangeQuery(cpuQ, range),
 			promRangeQuery(memQ, range),
@@ -303,9 +388,14 @@ async function refresh() {
 			promRangeQuery(rdQ, range),
 			promRangeQuery(wrQ, range),
 		]);
+		
+		const elapsed = Date.now() - startTime;
+		console.log('[ExpertMetrics] All queries completed in', elapsed, 'ms');
+		console.log('[ExpertMetrics] Results - CPU:', cpuS.length, 'series, Memory:', memS.length, 'series');
+		
 		cpu.value = cpuS; memory.value = memS; netRx.value = rxS; netTx.value = txS; diskRead.value = rdS; diskWrite.value = wrS;
 	} catch (e) {
-		console.error('[ExpertMetrics] refresh error', e);
+		console.error('[ExpertMetrics] Refresh error:', e);
 		error.value = e?.message || String(e);
 	}
 }
@@ -316,11 +406,28 @@ watch(refreshInterval, () => {
 	if (refreshInterval.value > 0) timer = setInterval(refresh, refreshInterval.value * 1000);
 });
 
-onMounted(() => {
-	console.log('[ExpertMetrics] mounted', { kind: resourceKind.value, namespace: namespace.value, name: resourceName.value });
-	refresh();
+onMounted(async () => {
+	console.log('[ExpertMetrics] Component mounted');
+	console.log('[ExpertMetrics] Cluster ID:', clusterId.value);
+	console.log('[ExpertMetrics] Resource:', { kind: resourceKind.value, namespace: namespace.value, name: resourceName.value });
+	console.log('[ExpertMetrics] Props received:', props.resource);
+	
+	// First check if Prometheus is available
+	await checkPrometheusAvailability();
+	
+	// Only fetch metrics if available
+	if (isPrometheusAvailable.value) {
+		console.log('[ExpertMetrics] Prometheus available, fetching initial metrics...');
+		refresh();
+	} else {
+		console.log('[ExpertMetrics] Prometheus not available, skipping metrics fetch');
+	}
 });
-onUnmounted(() => { if (timer) clearInterval(timer); });
+
+onUnmounted(() => { 
+	console.log('[ExpertMetrics] Component unmounting, clearing timer');
+	if (timer) clearInterval(timer); 
+});
 </script>
 
 <style scoped>
@@ -334,4 +441,113 @@ article { border: 1px solid #ddd; border-radius: 6px; padding: 12px; background:
 .empty { color: #888; }
 .debug { color: #999; font-size: 12px; }
 .error { color: #b00; }
+
+/* Availability check styles */
+.availability-check {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	padding: 60px 20px;
+	color: #666;
+}
+
+.loading-spinner {
+	width: 40px;
+	height: 40px;
+	border: 3px solid #e0e0e0;
+	border-top-color: #3d98d3;
+	border-radius: 50%;
+	animation: spin 1s linear infinite;
+	margin-bottom: 16px;
+}
+
+@keyframes spin {
+	to { transform: rotate(360deg); }
+}
+
+/* Not available styles */
+.not-available {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	padding: 40px 20px;
+	text-align: center;
+	max-width: 600px;
+	margin: 0 auto;
+}
+
+.not-available-icon {
+	font-size: 64px;
+	margin-bottom: 16px;
+	opacity: 0.6;
+}
+
+.not-available h2 {
+	margin: 0 0 12px 0;
+	color: #555;
+	font-size: 24px;
+}
+
+.not-available-message {
+	color: #666;
+	font-size: 16px;
+	margin: 0 0 8px 0;
+}
+
+.not-available-details {
+	color: #888;
+	font-size: 14px;
+	margin: 0 0 20px 0;
+}
+
+.not-available-details code {
+	background: #f5f5f5;
+	padding: 2px 6px;
+	border-radius: 3px;
+	font-family: monospace;
+}
+
+.not-available-help {
+	background: #f8f9fa;
+	border: 1px solid #e0e0e0;
+	border-radius: 6px;
+	padding: 16px;
+	margin-bottom: 20px;
+	width: 100%;
+}
+
+.not-available-help p {
+	margin: 0 0 8px 0;
+	color: #555;
+	font-size: 14px;
+}
+
+.install-command {
+	display: block;
+	background: #2d3748;
+	color: #e2e8f0;
+	padding: 12px;
+	border-radius: 4px;
+	font-family: monospace;
+	font-size: 12px;
+	word-break: break-all;
+	text-align: left;
+}
+
+.retry-btn {
+	background: #3d98d3;
+	color: white;
+	border: none;
+	padding: 10px 24px;
+	border-radius: 4px;
+	font-size: 14px;
+	cursor: pointer;
+	transition: background 0.2s;
+}
+
+.retry-btn:hover {
+	background: #2d7ab3;
+}
 </style>
