@@ -1066,6 +1066,11 @@
   resolved "https://registry.yarnpkg.com/@babel/helper-plugin-utils/-/helper-plugin-utils-7.27.1.tgz#ddb2f876534ff8013e6c2b299bf4d39b3c51d44c"
   integrity sha512-1gn1Up5YXka3YYAHGKpbideQ5Yjf1tDa9qYcgysz+cNCXukyLl6DjPXhD3VRwSb8c0J9tA4b2+rHEZtc6R0tlw==
 
+"@babel/helper-plugin-utils@^7.28.6":
+  version "7.28.6"
+  resolved "https://registry.yarnpkg.com/@babel/helper-plugin-utils/-/helper-plugin-utils-7.28.6.tgz#6f13ea251b68c8532e985fd532f28741a8af9ac8"
+  integrity sha512-S9gzZ/bz83GRysI7gAD4wPT/AI3uCnY+9xn+Mx/KPs2JwHJIz1W8PZkg2cqyt3RNOBM8ejcXhV6y8Og7ly/Dug==
+
 "@babel/helper-remap-async-to-generator@^7.27.1":
   version "7.27.1"
   resolved "https://registry.yarnpkg.com/@babel/helper-remap-async-to-generator/-/helper-remap-async-to-generator-7.27.1.tgz#4601d5c7ce2eb2aea58328d43725523fcd362ce6"
@@ -1300,11 +1305,11 @@
     "@babel/helper-plugin-utils" "^7.8.0"
 
 "@babel/plugin-syntax-jsx@^7.12.13", "@babel/plugin-syntax-jsx@^7.2.0", "@babel/plugin-syntax-jsx@^7.27.1":
-  version "7.27.1"
-  resolved "https://registry.yarnpkg.com/@babel/plugin-syntax-jsx/-/plugin-syntax-jsx-7.27.1.tgz#2f9beb5eff30fa507c5532d107daac7b888fa34c"
-  integrity sha512-y8YTNIeKoyhGd9O0Jiyzyyqk8gdjnumGTQPsz0xOZOQ2RmkVJeZ1vmmfIvFEKqucBG6axJGBZDE/7iI5suUI/w==
+  version "7.28.6"
+  resolved "https://registry.yarnpkg.com/@babel/plugin-syntax-jsx/-/plugin-syntax-jsx-7.28.6.tgz#f8ca28bbd84883b5fea0e447c635b81ba73997ee"
+  integrity sha512-wgEmr06G6sIpqr8YDwA2dSRTE3bJ+V0IfpzfSY3Lfgd7YWOaAdlykvJi13ZKBt8cZHfgH1IXN+CL656W3uUa4w==
   dependencies:
-    "@babel/helper-plugin-utils" "^7.27.1"
+    "@babel/helper-plugin-utils" "^7.28.6"
 
 "@babel/plugin-syntax-logical-assignment-operators@^7.10.4":
   version "7.10.4"
