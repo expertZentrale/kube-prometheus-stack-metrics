@@ -38,16 +38,27 @@
 					</label>
 					<label>
 						Refresh
-						<select v-model.number="refreshInterval">
-							<option :value="0">Off</option>
-							<option :value="15">15s</option>
-							<option :value="30">30s</option>
-							<option :value="60">60s</option>
+					<select v-model="refreshInterval">
+						<option value="">Off</option>
+						<option value="5s">5s</option>
+						<option value="10s">10s</option>
+						<option value="30s">30s</option>
+						<option value="1m">1m</option>
+						<option value="5m">5m</option>
+						<option value="15m">15m</option>
+						<option value="30m">30m</option>
+						<option value="1h">1h</option>
+						<option value="2h">2h</option>
+						<option value="1d">1d</option>
 						</select>
 					</label>
 					<button @click="refresh">Refresh</button>
 				</div>
-				<div class="debug">Resource: {{ resourceName }} ({{ resourceKind }}) — Namespace: {{ namespace }} — Cluster: {{ clusterId }} — Grafana: {{ resolvedGrafanaBaseUrl }}</div>
+				<div class="debug">
+					Resource: {{ resourceName }} ({{ resourceKind }})
+					<template v-if="grafanaWorkloadName && grafanaWorkloadName !== resourceName"> → Grafana Workload: {{ grafanaWorkloadName }}</template>
+					— Namespace: {{ namespace }} — Cluster: {{ clusterId }} — Grafana: {{ resolvedGrafanaBaseUrl }}
+				</div>
 			</header>
 
 			<section class="graphs">
@@ -82,7 +93,7 @@ defineExpose({ tabChange });
 const $store = getCurrentInstance()?.proxy?.$store;
 
 const selectedWindow = ref('5m');
-const refreshInterval = ref(30);
+const refreshInterval = ref('30s');
 const iframeKey = ref(0);
 
 const isCheckingAvailability = ref(true);
@@ -103,9 +114,129 @@ const clusterId = computed(() => {
 	return pathMatch?.[1] || 'local';
 });
 
-const resourceKind = computed(() => props.resource?.kind || props.resource?.type || 'ReplicaSet');
+/**
+ * Extract the resource kind from the resource object.
+ * In Rancher, resource.type contains values like 'apps.deployment', 'apps.statefulset', etc.
+ * We prioritize 'type' over 'kind' because 'type' represents the tab/page we're on,
+ * while 'kind' might change if Rancher updates the resource object (e.g., Deployment -> ReplicaSet).
+ */
+const resourceKind = computed(() => {
+	// Debug logging to track what's happening
+	console.log('[expert-metrics] Computing resourceKind:', {
+		kind: props.resource?.kind,
+		type: props.resource?.type,
+		timestamp: new Date().toISOString()
+	});
+
+	// First try to parse from type field (e.g., 'apps.deployment' -> 'Deployment')
+	// This is more stable than 'kind' which might change when Rancher updates the resource
+	const type = props.resource?.type || '';
+	if (type) {
+		const parts = type.split('.');
+		const kindLower = parts[parts.length - 1];
+		
+		// Map known types to proper capitalization
+		const kindMap = {
+			'deployment': 'Deployment',
+			'statefulset': 'StatefulSet',
+			'daemonset': 'DaemonSet',
+			'replicaset': 'ReplicaSet',
+			'job': 'Job',
+			'cronjob': 'CronJob',
+			'pod': 'Pod'
+		};
+
+		const result = kindMap[kindLower] || kindLower.charAt(0).toUpperCase() + kindLower.slice(1);
+		console.log('[expert-metrics] Parsed from type:', type, '->', result);
+		return result;
+	}
+
+	// Fall back to kind field if type is not available
+	if (props.resource?.kind) {
+		console.log('[expert-metrics] Using resource.kind:', props.resource.kind);
+		return props.resource.kind;
+	}
+
+	console.log('[expert-metrics] No resource type/kind found, defaulting to Pod');
+	return 'Pod';
+});
+
 const resourceName = computed(() => props.resource?.metadata?.name || props.resource?.name || 'sample');
 const namespace = computed(() => props.resource?.metadata?.namespace || props.resource?.namespace || 'default');
+
+// For Deployments, we need to find the related ReplicaSet name(s)
+const grafanaWorkloadName = ref('');
+
+/**
+ * Find the active ReplicaSet(s) for a Deployment.
+ * ReplicaSets created by Deployments have names like: {deployment-name}-{pod-template-hash}
+ */
+async function findRelatedReplicaSets() {
+	if (!$store) {
+		console.log('[expert-metrics] Store not available for ReplicaSet lookup');
+		return null;
+	}
+
+	const kind = resourceKind.value;
+	const name = resourceName.value;
+	const ns = namespace.value;
+
+	// Only need to look up ReplicaSets for Deployments
+	if (kind !== 'Deployment') {
+		console.log('[expert-metrics] Not a Deployment, using resource name directly:', name);
+		return name;
+	}
+
+	try {
+		console.log('[expert-metrics] Looking for ReplicaSets owned by Deployment:', name);
+		
+		// Fetch all ReplicaSets in the namespace
+		const allReplicaSets = await $store.dispatch('cluster/findAll', { type: 'apps.replicaset' });
+		
+		if (!allReplicaSets || !allReplicaSets.length) {
+			console.log('[expert-metrics] No ReplicaSets found in cluster');
+			return name;
+		}
+
+		// Filter ReplicaSets that belong to this Deployment
+		// They should be in the same namespace and have the deployment name as prefix
+		const matchingReplicaSets = allReplicaSets.filter(rs => {
+			const rsNamespace = rs?.metadata?.namespace;
+			const rsName = rs?.metadata?.name || '';
+			
+			// Check if in same namespace and name starts with deployment name
+			if (rsNamespace !== ns || !rsName.startsWith(name + '-')) {
+				return false;
+			}
+
+			// Check owner references to confirm it's owned by a Deployment
+			const ownerRefs = rs?.metadata?.ownerReferences || [];
+			return ownerRefs.some(owner => owner.kind === 'Deployment' && owner.name === name);
+		});
+
+		console.log('[expert-metrics] Found matching ReplicaSets:', matchingReplicaSets.length);
+
+		if (matchingReplicaSets.length === 0) {
+			console.log('[expert-metrics] No ReplicaSets found for Deployment, using deployment name');
+			return name;
+		}
+
+		// Find the ReplicaSet with the most replicas (the active one)
+		const activeReplicaSet = matchingReplicaSets.reduce((active, current) => {
+			const activeReplicas = active?.status?.replicas || 0;
+			const currentReplicas = current?.status?.replicas || 0;
+			return currentReplicas > activeReplicas ? current : active;
+		});
+
+		const replicaSetName = activeReplicaSet?.metadata?.name || name;
+		console.log('[expert-metrics] Using ReplicaSet name for Grafana:', replicaSetName);
+		return replicaSetName;
+
+	} catch (e) {
+		console.error('[expert-metrics] Error finding ReplicaSets:', e);
+		return name;
+	}
+}
 
 /**
  * Extract a full Grafana URL from an Ingress resource's spec.rules[].host,
@@ -205,25 +336,48 @@ const resolvedGrafanaBaseUrl = computed(() => {
 	return (grafanaBaseUrl.value || '').trim() || '';
 });
 
+/**
+ * Map resource kinds to what Grafana dashboards expect.
+ * Grafana dashboards typically expect ReplicaSet for Deployments since
+ * Deployments create and manage ReplicaSets.
+ */
+function mapKindForGrafana(kind) {
+	const kindMap = {
+		'Deployment': 'ReplicaSet',
+		'StatefulSet': 'StatefulSet',
+		'DaemonSet': 'DaemonSet',
+		'ReplicaSet': 'ReplicaSet',
+		'Job': 'Job',
+		'CronJob': 'CronJob',
+		'Pod': 'Pod'
+	};
+	const mapped = kindMap[kind] || kind;
+	if (mapped !== kind) {
+		console.log(`[expert-metrics] Mapping kind for Grafana: ${kind} -> ${mapped}`);
+	}
+	return mapped;
+}
+
 function buildGrafanaUrl(includeKiosk) {
 	const url = new URL(resolvedGrafanaBaseUrl.value, window.location.origin);
 	url.searchParams.set('orgId', '1');
 	url.searchParams.set('from', `now-${selectedWindow.value}`);
 	url.searchParams.set('to', 'now');
 
-	if (refreshInterval.value > 0) {
-		url.searchParams.set('refresh', `${refreshInterval.value}s`);
+	if (refreshInterval.value) {
+		url.searchParams.set('refresh', refreshInterval.value);
 	} else {
 		url.searchParams.delete('refresh');
 	}
 
 	url.searchParams.set('var-namespace', namespace.value);
-	url.searchParams.set('var-kind', resourceKind.value);
-	url.searchParams.set('var-workload', resourceName.value);
+	url.searchParams.set('var-kind', mapKindForGrafana(resourceKind.value));
+	url.searchParams.set('var-workload', grafanaWorkloadName.value || resourceName.value);
 	url.searchParams.set('theme', 'light');
 
 	if (includeKiosk) {
-		url.searchParams.set('kiosk', '');
+		// Full kiosk mode - hides all Grafana UI including variable dropdowns
+		url.searchParams.set('kiosk', '1');
 	} else {
 		url.searchParams.delete('kiosk');
 	}
@@ -234,7 +388,12 @@ function buildGrafanaUrl(includeKiosk) {
 const grafanaIframeUrl = computed(() => buildGrafanaUrl(true));
 const grafanaExternalUrl = computed(() => buildGrafanaUrl(false));
 
-function refresh() {
+async function refresh() {
+	// For Deployments, find the associated ReplicaSet name
+	const workloadName = await findRelatedReplicaSets();
+	if (workloadName) {
+		grafanaWorkloadName.value = workloadName;
+	}
 	iframeKey.value += 1;
 }
 
@@ -243,7 +402,7 @@ watch([selectedWindow, refreshInterval, namespace, resourceKind, resourceName, r
 onMounted(async () => {
 	await checkGrafanaAvailability();
 	if (isGrafanaAvailable.value) {
-		refresh();
+		await refresh();
 	}
 });
 </script>

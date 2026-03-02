@@ -1,0 +1,33 @@
+{
+  "name": "Kube Prometheus Stack Metrics Extension",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:20",
+  
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20",
+      "nodeGypDependencies": true,
+      "installYarnUsingApt": true
+    }
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "Vue.volar",
+        "Vue.vscode-typescript-vue-plugin",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-vscode.vscode-typescript-next"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "zsh"
+      }
+    }
+  },
+
+  "postCreateCommand": "yarn install",
+
+  "forwardPorts": [8005],
+
+  "remoteUser": "node"
+}

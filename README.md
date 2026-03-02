@@ -133,8 +133,9 @@ If your installation uses a different namespace, you'll need to modify the exten
 
 ### Prerequisites
 
-- Node.js >= 16
-- Yarn
+- Node.js >= 20 (tested with v20.17.0)
+- Yarn (`npm install -g yarn`)
+- A running Rancher instance (v2.10+)
 
 ### Setup
 
@@ -143,16 +144,52 @@ cd kube-prometheus-stack-metrics
 yarn install
 ```
 
-### Development Server
+### Running the Development App
+
+The development app gives you a full Rancher UI with your extension automatically loaded and hot-reloading enabled.
+
+Point `API` to your Rancher backend URL and start the dev server:
 
 ```bash
-yarn dev
+API=https://your-rancher-instance.example.com yarn dev
 ```
+
+Then open [https://127.0.0.1:8005](https://127.0.0.1:8005) in your browser. Log in with your Rancher credentials — the extension will be loaded automatically and you can see changes in real time as you edit the source.
+
+> **Note:** You must be an admin user to test extensions in the Rancher UI.
+
+### Developer Load (testing a built extension)
+
+You can also build the extension and load it dynamically into any Rancher instance:
+
+1. Build the extension package:
+
+   ```bash
+   yarn build-pkg kube-prometheus-stack-metrics
+   ```
+
+2. Serve the built package locally:
+
+   ```bash
+   yarn serve-pkgs
+   ```
+
+   This starts a local server on port 4500 and prints the URL for the built extension.
+
+3. In Rancher, go to **user avatar → Preferences → Advanced Features** and enable **"Extension developer features"**.
+
+4. Go to **Extensions → ⋮ → Developer Load** and enter the URL printed by `yarn serve-pkgs`, e.g.:
+
+   ```
+   https://127.0.0.1:8005/pkg/kube-prometheus-stack-metrics-0.2.0/kube-prometheus-stack-metrics-0.2.0.umd.min.js
+   ```
+
+5. Click **Load**. The extension will appear immediately. Check **"Persist extension by creating custom resource"** to keep it across reloads.
 
 ### Build
 
 ```bash
-yarn build
+yarn build-pkg kube-prometheus-stack-metrics
 ```
 
 ### Project Structure
