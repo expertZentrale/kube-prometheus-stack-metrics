@@ -11,6 +11,25 @@ entries:
       catalog.cattle.io/ui-component: plugins
       catalog.cattle.io/ui-extensions-version: '>= 3.0.0 < 4.0.0'
     apiVersion: v2
+    appVersion: 0.1.5
+    created: "2026-03-03T10:13:45.0278069Z"
+    description: kube-prometheus-stack-metrics plugin
+    digest: e80583cdf9e9cdb391ac2df284a2281197d34bdbc4e8661d088c94029af5795d
+    name: kube-prometheus-stack-metrics
+    type: application
+    urls:
+    - assets/kube-prometheus-stack-metrics/kube-prometheus-stack-metrics-0.1.5.tgz
+    version: 0.1.5
+  - annotations:
+      catalog.cattle.io/certified: rancher
+      catalog.cattle.io/namespace: cattle-ui-plugin-system
+      catalog.cattle.io/os: linux
+      catalog.cattle.io/permits-os: linux, windows
+      catalog.cattle.io/rancher-version: '>= 2.10.0'
+      catalog.cattle.io/scope: management
+      catalog.cattle.io/ui-component: plugins
+      catalog.cattle.io/ui-extensions-version: '>= 3.0.0 < 4.0.0'
+    apiVersion: v2
     appVersion: 0.1.1
     created: "2025-12-17T13:32:05.603740591Z"
     description: kube-prometheus-stack-metrics plugin
@@ -39,4 +58,4 @@ entries:
     urls:
     - assets/kube-prometheus-stack-metrics/kube-prometheus-stack-metrics-0.1.0.tgz
     version: 0.1.0
-generated: "2025-12-17T13:32:05.603367018Z"
+generated: "2026-03-03T10:13:45.027188261Z"
