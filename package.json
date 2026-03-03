@@ -1,6 +1,6 @@
 {
   "name": "kube-prometheus-stack-metrics",
-  "version": "0.1.4",
+  "version": "0.1.6",
   "private": false,
   "engines": {
     "node": ">=20"
