@@ -376,10 +376,14 @@ function buildGrafanaUrl(includeKiosk) {
 	url.searchParams.set('theme', 'light');
 
 	if (includeKiosk) {
-		// Full kiosk mode - hides all Grafana UI including variable dropdowns
-		url.searchParams.set('kiosk', '1');
+		// Kiosk mode with hidden time picker and variables
+		url.searchParams.set('kiosk', 'true');
+		url.searchParams.set('_dash.hideTimePicker', 'true');
+		url.searchParams.set('_dash.hideVariables', 'true');
 	} else {
 		url.searchParams.delete('kiosk');
+		url.searchParams.delete('_dash.hideTimePicker');
+		url.searchParams.delete('_dash.hideVariables');
 	}
 
 	return url.toString();
