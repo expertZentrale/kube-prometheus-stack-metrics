@@ -1,6 +1,6 @@
 # kube-prometheus-stack-metrics
 
-A Rancher UI Extension (v3) that adds a metrics tab to Deployments, StatefulSets, DaemonSets, ReplicaSets, Jobs, CronJobs, and Pods. The extension displays CPU, memory, network, and disk metrics from [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) with interactive charts.
+A Rancher UI Extension (v3) that adds a metrics tab to Deployments, StatefulSets, DaemonSets, ReplicaSets, Jobs, CronJobs, and Pods. The extension displays CPU, memory, network, and disk metrics from [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) Grafana dashboards with interactive charts.
 
 ## 📊 Workload Metrics for Rancher UI
 
@@ -13,8 +13,8 @@ This extension **restores the workload metrics dashboard** in the Rancher UI for
 | Feature | Description |
 |---------|-------------|
 | Workload Metrics Tab | Adds a metrics tab to Deployments, StatefulSets, Pods, etc. |
-| CPU/Memory/Network/Disk | Displays key resource metrics with interactive charts |
-| Prometheus Integration | Queries metrics from your existing kube-prometheus-stack |
+| CPU/Memory/Network/Disk | Displays key resource metrics with interactive Grafana charts |
+| Grafana Integration | Embeds Grafana dashboards directly in the Rancher UI |
 | Free & Open Source | No subscription required |
 
 ## Table of Contents
@@ -32,14 +32,17 @@ This extension **restores the workload metrics dashboard** in the Rancher UI for
 
 ## Features
 
-- 📊 **Real-time metrics visualization** for workloads and pods
-- 📈 **Interactive charts** with hover tooltips showing exact values
-- ⏱️ **Configurable timeframes**: 15m, 1h, 6h, 24h
-- 🔄 **Auto-refresh** with configurable intervals (Off, 15s, 30s, 60s)
-- 🎨 **High-resolution graphs** with 598+ data points for smooth visualization
-- ✅ **Graceful fallback** when kube-prometheus-stack is not installed
+- 📊 **Grafana dashboard visualization** embedded directly in Rancher UI
+- 📈 **Interactive charts** from Rancher monitoring dashboards
+- ⏱️ **Configurable timeframes**: 5m, 15m, 1h, 6h, 24h
+- 🔄 **Auto-refresh** with configurable intervals (Off, 5s, 10s, 30s, 1m, 5m, 15m, 30m, 1h, 2h, 1d)
+- 🎨 **Clean kiosk mode** hides Grafana UI elements for seamless integration
+- ✅ **Automatic discovery** of Grafana Ingress from kube-prometheus-stack
+- 🔍 **Smart workload mapping** automatically finds ReplicaSets for Deployments
 
 ### Metrics Displayed
+
+The extension uses Rancher monitoring dashboards to display:
 
 | Metric | Description |
 |--------|-------------|
@@ -54,7 +57,10 @@ This extension **restores the workload metrics dashboard** in the Rancher UI for
 
 - **Rancher** >= 2.10.0
 - **UI Extensions** >= 3.0.0 < 4.0.0
-- **kube-prometheus-stack** installed in the target cluster (in `prometheus` namespace)
+- **kube-prometheus-stack** installed in the target cluster with:
+  - Grafana with Ingress enabled
+  - Rancher monitoring dashboards imported (see [Configuration](#configuration))
+- **Ingress controller** to expose Grafana (e.g., nginx-ingress, traefik)
 
 ## Installation
 
@@ -94,40 +100,213 @@ Once installed, a new **"expert Metrics"** tab appears in the detail view of:
 
 ### kube-prometheus-stack Setup
 
-If kube-prometheus-stack is not installed, the extension will display a helpful message with installation instructions:
+This extension requires kube-prometheus-stack with Grafana and an Ingress to access it.
 
-<img width="1074" height="730" alt="kube-prometheus-stack not installed" src="https://github.com/user-attachments/assets/36e89ed8-a65b-4fb6-989c-af7a31ce6f3a" />
-
-To install kube-prometheus-stack:
+#### 1. Install kube-prometheus-stack with Ingress enabled
 
 ```bash
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
-helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack -n prometheus --create-namespace
+
+# Install with Grafana Ingress enabled
+helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+  -n prometheus --create-namespace \
+  --set grafana.ingress.enabled=true \
+  --set grafana.ingress.hosts[0]=grafana.your-domain.com
+```
+
+If kube-prometheus-stack is not installed, the extension will display a helpful message:
+
+<img width="1074" height="730" alt="kube-prometheus-stack not installed" src="https://github.com/user-attachments/assets/36e89ed8-a65b-4fb6-989c-af7a31ce6f3a" />
+
+#### 2. Import Rancher Monitoring Dashboards
+
+**This extension requires Rancher monitoring dashboards to be imported into Grafana.**
+
+The dashboards are available in the [Rancher charts repository](https://github.com/rancher/charts). You need to import them from:
+
+```
+charts/rancher-monitoring/{VERSION}/files/rancher
+```
+
+Where `{VERSION}` is the rancher-monitoring version (e.g., `105.1.4+up61.3.2-rancher.5`).
+
+##### Required Dashboards
+
+Import these dashboards from the folder above:
+
+```bash
+# Dashboards matching Rancher UI metrics tabs
+cluster/rancher-cluster.json
+cluster/rancher-cluster-nodes.json
+nodes/rancher-node.json
+nodes/rancher-node-detail.json
+pods/rancher-pod.json
+pods/rancher-pod-containers.json
+workloads/rancher-workload.json
+workloads/rancher-workload-pods.json
+```
+
+##### Quick Import Script
+
+```bash
+# Set your rancher-monitoring version
+VERSION="105.1.4+up61.3.2-rancher.5"
+BASE_URL="https://raw.githubusercontent.com/rancher/charts/main/charts/rancher-monitoring/${VERSION}/files/rancher"
+
+# Download dashboards
+DASHBOARDS=(
+    "cluster/rancher-cluster.json"
+    "cluster/rancher-cluster-nodes.json"
+    "nodes/rancher-node.json"
+    "nodes/rancher-node-detail.json"
+    "pods/rancher-pod.json"
+    "pods/rancher-pod-containers.json"
+    "workloads/rancher-workload.json"
+    "workloads/rancher-workload-pods.json"
+)
+
+mkdir -p rancher-dashboards
+for dashboard in "${DASHBOARDS[@]}"; do
+    echo "Downloading $dashboard..."
+    curl -fsSL "${BASE_URL}/${dashboard}" -o "rancher-dashboards/$(basename $dashboard)"
+done
+
+echo "Dashboards downloaded to rancher-dashboards/"
+echo "Import them manually via Grafana UI: Dashboards → Import → Upload JSON file"
+```
+
+**Important:** The extension specifically uses the `rancher-workload-pods` dashboard for displaying workload metrics.
+
+### Grafana Discovery
+
+The extension automatically discovers the Grafana Ingress by searching for:
+
+1. **Helm labels**: `app.kubernetes.io/name=grafana` and `app.kubernetes.io/instance=kube-prometheus-stack`
+2. **Name patterns**: Ingress named `kube-prometheus-stack-grafana` or `grafana`
+
+Searched in these namespaces (in order):
+- `prometheus`
+- `monitoring`
+- `cattle-monitoring-system`
+
+### Custom Dashboards
+
+If you prefer to create your own dashboard instead of using Rancher's monitoring dashboards, the extension requires:
+
+#### Dashboard UID and URL Slug
+
+The dashboard must have:
+- **UID**: `rancher-workload-pods-1`
+- **URL slug**: `rancher-workload-pods`
+
+This results in the dashboard path: `/d/rancher-workload-pods-1/rancher-workload-pods`
+
+#### Required Variables
+
+Your custom dashboard must define these variables:
+
+| Variable Name | Type | Description | Example Values |
+|--------------|------|-------------|----------------|
+| `namespace` | Query or Custom | Kubernetes namespace | `default`, `kube-system` |
+| `kind` | Query or Custom | Resource kind | `ReplicaSet`, `StatefulSet`, `DaemonSet`, `Pod` |
+| `workload` | Query or Custom | Workload name | `nginx-deployment-7d64f8d9c7` |
+
+**Note:** For Deployments, the extension automatically:
+1. Maps the kind to `ReplicaSet` (since Deployments manage ReplicaSets)
+2. Resolves the actual ReplicaSet name (e.g., `deploy-name-6c6644b6b6`)
+
+#### Example Variable Configuration
+
+In Grafana dashboard JSON:
+
+```json
+{
+  "templating": {
+    "list": [
+      {
+        "name": "namespace",
+        "type": "query",
+        "query": "label_values(kube_pod_info, namespace)",
+        "current": {
+          "text": "default",
+          "value": "default"
+        }
+      },
+      {
+        "name": "kind",
+        "type": "custom",
+        "query": "ReplicaSet,StatefulSet,DaemonSet,Pod",
+        "current": {
+          "text": "ReplicaSet",
+          "value": "ReplicaSet"
+        }
+      },
+      {
+        "name": "workload",
+        "type": "query",
+        "query": "label_values(kube_pod_info{namespace=\"$namespace\"}, pod)",
+        "current": {
+          "text": "nginx-7d64f8d9c7-abc123",
+          "value": "nginx-7d64f8d9c7-abc123"
+        }
+      }
+    ]
+  }
+}
+```
+
+#### Example Metrics Queries
+
+Use these variables in your panel queries:
+
+```promql
+# CPU Usage
+sum(rate(container_cpu_usage_seconds_total{namespace="$namespace",pod=~"$workload.*"}[5m]))
+
+# Memory Usage
+sum(container_memory_working_set_bytes{namespace="$namespace",pod=~"$workload.*"})
+
+# Network Receive
+sum(rate(container_network_receive_bytes_total{namespace="$namespace",pod=~"$workload.*"}[5m]))
+
+# Network Transmit
+sum(rate(container_network_transmit_bytes_total{namespace="$namespace",pod=~"$workload.*"}[5m]))
 ```
 
 ### Prometheus Namespace
 
-The extension expects the Prometheus service at:
-```
-kube-prometheus-stack-prometheus.prometheus.svc:9090
-```
-
-If your installation uses a different namespace, you'll need to modify the extension source code.
+If your kube-prometheus-stack is installed in a different namespace than `prometheus`, the extension will still discover it as long as the Ingress exists in one of the searched namespaces.
 
 ## Troubleshooting
 
 ### Metrics not showing
 
-1. **Check kube-prometheus-stack is installed**: Verify the Prometheus pods are running in the `prometheus` namespace
-2. **Check service exists**: Ensure `kube-prometheus-stack-prometheus` service exists
-3. **Check browser console**: Open developer tools and look for `[ExpertMetrics]` log messages
+1. **Check Grafana Ingress exists**: The extension searches for Grafana Ingress in `prometheus`, `monitoring`, or `cattle-monitoring-system` namespaces
+2. **Check Rancher dashboards are imported**: Verify that `rancher-workload-pods` dashboard exists in Grafana
+3. **Check browser console**: Open developer tools and look for `[expert-metrics]` log messages showing:
+   - Resource kind detection
+   - ReplicaSet lookup (for Deployments)
+   - Grafana URL being constructed
+4. **Verify Grafana is accessible**: Try opening the Grafana link at the bottom of the metrics tab
 
-### Empty charts
+### "Metrics Not Available" message
 
+- kube-prometheus-stack Grafana Ingress is not found
+- Check that Grafana Ingress is enabled and deployed
+- Check the searched namespaces match your installation
+
+### Empty charts / "No data"
+
+- The dashboards may not be imported (see [Configuration](#configuration))
 - The workload may not have any pods running
 - Prometheus may not have scraped metrics for this workload yet (wait a few minutes)
-- Check that container metrics are being collected by kube-prometheus-stack
+- For Deployments: Check that at least one ReplicaSet exists
+- Check that the dashboard variables (namespace, kind, workload) are correct in the debug line
+
+### Wrong workload name for Deployments
+
+The extension automatically finds the active ReplicaSet for Deployments (e.g., `deploy-name-6c6644b6b6`). Check the debug line to see if the workload name is being resolved correctly.
 
 ## Development
 
