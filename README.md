@@ -28,6 +28,9 @@ This extension **restores the workload metrics dashboard** in the Rancher UI for
 - [Configuration](#configuration)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
+  - [Toolchain compatibility](#toolchain-compatibility)
+  - [Developer Load (recommended)](#developer-load-recommended)
+  - [Running the Development App (proxy mode)](#running-the-development-app-proxy-mode)
 - [License](#license)
 
 ## Features
@@ -308,62 +311,147 @@ If your kube-prometheus-stack is installed in a different namespace than `promet
 
 The extension automatically finds the active ReplicaSet for Deployments (e.g., `deploy-name-6c6644b6b6`). Check the debug line to see if the workload name is being resolved correctly.
 
+### Dev server login page has no username/password fields
+
+`yarn dev` renders "Welcome to Rancher" but no login form, and the console shows a 404 for
+`/v1-public/authproviders`. The proxy is fine — the Rancher backend genuinely does not serve that
+endpoint. `@rancher/shell` >= 3.0.8 requires it; Rancher <= 2.12.x only provides
+`/v3-public/authProviders`. See [Toolchain compatibility](#toolchain-compatibility); use
+[Developer Load](#developer-load-recommended) instead.
+
+### "Developer Load" appears to do nothing
+
+The browser is blocking the bundle as mixed content — HTTPS Rancher page, HTTP `serve-pkgs` origin —
+and Chrome does this **without a visible warning**. Allow insecure content for the Rancher origin
+(address-bar icon → Site settings → Insecure content → Allow) and reload. Confirm the fetch
+succeeded by looking for a `200` on the `.umd.min.js` request in the Network tab.
+
+### Extension disappears after a page refresh
+
+Expected. A dev-loaded extension exists only in the current SPA session. Navigate by clicking within
+the UI, or tick "Persist extension by creating custom resource" when loading — and remember to
+uninstall the resulting `uiplugin` afterwards, since it points at your local machine.
+
+### `yarn install` fails with "engine node is incompatible"
+
+`@rancher/shell` >= 3.0.10 requires Node 24. Run `nvm use` to pick up `.nvmrc`. If you must stay on
+Node 20, also pin `@rancher/shell` to `3.0.9` — otherwise yarn keeps resolving to a version that
+cannot install, which is the same failure that stalls Dependabot.
+
 ## Development
 
 ### Prerequisites
 
-- Node.js >= 20 (tested with v20.17.0)
-- Yarn (`npm install -g yarn`)
-- A running Rancher instance (v2.10+)
+- Node.js >= 24 — required by `@rancher/shell` >= 3.0.10 (see [Toolchain compatibility](#toolchain-compatibility))
+- Yarn 1.x classic — `yarn.lock` is v1 format, so use `--frozen-lockfile`, not Berry's `--immutable`
+- A running Rancher instance (v2.10+) and an **admin** account — non-admins cannot load extensions
 
 ### Setup
 
 ```bash
-cd kube-prometheus-stack-metrics
-yarn install
+nvm use            # picks up .nvmrc (node 24)
+yarn install --frozen-lockfile
 ```
 
-### Running the Development App
+### Toolchain compatibility
 
-The development app gives you a full Rancher UI with your extension automatically loaded and hot-reloading enabled.
+Two version couplings are easy to trip over, because both fail in ways that give no useful error.
 
-Point `API` to your Rancher backend URL and start the dev server:
+**`@rancher/shell` >= 3.0.10 requires Node 24.** On Node 20 `yarn install` aborts with
+`The engine "node" is incompatible with this module`. This also breaks Dependabot: its npm job
+resolves the newest matching `@rancher/shell`, hits the engine error, and the entire update run dies —
+silently withholding *all* npm security updates, with no PR and no alert to show for it. If you pin
+back to Node 20, pin `@rancher/shell` to `3.0.9` as well, or the pipeline stalls again.
+
+**`@rancher/shell` >= 3.0.8 does not work with the proxy dev server against Rancher <= 2.12.x.**
+The login flow moved from `/v3-public/authProviders` to `/v1-public/authproviders` in 3.0.8, and
+Rancher 2.12.3 only serves the `/v3-public` form. The symptom is a login page that renders
+"Welcome to Rancher" with **no username or password fields** and a 404 in the console. Nothing in the
+UI hints at the cause.
+
+| `@rancher/shell` | Auth endpoint | Node | Proxy dev mode vs Rancher <= 2.12.x |
+|---|---|---|---|
+| 3.0.7 | `/v3-public` | >= 20 | works |
+| 3.0.8 – 3.0.9 | `/v1-public` | >= 20 | broken |
+| 3.0.10 – 3.0.11 | `/v1-public` | >= 24 | broken |
+
+Because 3.0.7 is the last version that works with proxy mode, and staying there re-breaks the
+dependency pipeline, **Developer Load is the recommended workflow** until the Rancher backend is
+new enough to serve `/v1-public`. It has a compensating advantage: it exercises the exact UMD bundle
+that CI builds, rather than the source.
+
+### Developer Load (recommended)
+
+Builds the extension and loads it into any Rancher instance. This tests the real build artifact.
+
+1. Build and serve the package:
+
+   ```bash
+   yarn build-pkg kube-prometheus-stack-metrics
+   yarn serve-pkgs
+   ```
+
+   `serve-pkgs` listens on port **4500** and prints the exact URL to use.
+
+2. In Rancher: **user avatar → Preferences** → enable **"Enable Extension developer features"**.
+   Verify it stuck — the checkbox can silently revert. It is stored as the `plugin-developer`
+   user preference and can be set directly if needed:
+
+   ```bash
+   curl -k -H "Authorization: Bearer $RANCHER_TOKEN" \
+     "$RANCHER_URL/v1/userpreferences/<user-id>"     # read, set plugin-developer=true, PUT back
+   ```
+
+3. **Allow insecure content for the Rancher origin.** Rancher is served over HTTPS and
+   `serve-pkgs` over plain HTTP, so the browser blocks the bundle as mixed content — **silently**,
+   with the Load button appearing to do nothing. In Chrome: click the icon left of the address bar →
+   **Site settings** → **Insecure content** → **Allow**, then reload.
+
+4. **Extensions → ⋮ → Developer Load**, and enter the URL from step 1:
+
+   ```
+   http://127.0.0.1:4500/kube-prometheus-stack-metrics-0.1.6/kube-prometheus-stack-metrics-0.1.6.umd.min.js
+   ```
+
+   The module name auto-fills. Click **Load**.
+
+5. **Navigate by clicking, not by pasting URLs.** A dev-loaded extension lives only in the current
+   SPA session, so any full page load discards it. Ticking **"Persist extension by creating custom
+   resource"** survives reloads, but writes a `uiplugin` CR pointing at *your* `127.0.0.1:4500` —
+   broken for everyone else on that Rancher, and for you once the server stops. Uninstall it when done.
+
+To confirm the extension actually initialised, look for these in the browser console:
+
+```
+[kube-prometheus-stack-metrics] Initializing plugin...
+[kube-prometheus-stack-metrics] Plugin metadata loaded: kube-prometheus-stack-metrics 0.1.6
+[kube-prometheus-stack-metrics] Tab registered for resource detail view
+```
+
+### Running the Development App (proxy mode)
+
+> **Requires `@rancher/shell` 3.0.7, or a Rancher new enough to serve `/v1-public/authproviders`.**
+> With the currently pinned shell version this produces a login page with no form — see
+> [Toolchain compatibility](#toolchain-compatibility). Use Developer Load instead.
+
+Runs a full Rancher UI locally with the extension compiled in and hot-reloading enabled. Because the
+whole dashboard is served from localhost, there is no mixed-content problem and no manual load step.
 
 ```bash
 API=https://your-rancher-instance.example.com yarn dev
 ```
 
-Then open [https://127.0.0.1:8005](https://127.0.0.1:8005) in your browser. Log in with your Rancher credentials — the extension will be loaded automatically and you can see changes in real time as you edit the source.
+Then open [https://127.0.0.1:8005](https://127.0.0.1:8005) and log in with your Rancher credentials.
+The dev server uses a self-signed certificate, so expect a browser warning.
 
-> **Note:** You must be an admin user to test extensions in the Rancher UI.
+### Verifying a build
 
-### Developer Load (testing a built extension)
+```bash
+yarn verify      # typecheck + lint + build + bundle smoke check
+```
 
-You can also build the extension and load it dynamically into any Rancher instance:
-
-1. Build the extension package:
-
-   ```bash
-   yarn build-pkg kube-prometheus-stack-metrics
-   ```
-
-2. Serve the built package locally:
-
-   ```bash
-   yarn serve-pkgs
-   ```
-
-   This starts a local server on port 4500 and prints the URL for the built extension.
-
-3. In Rancher, go to **user avatar → Preferences → Advanced Features** and enable **"Extension developer features"**.
-
-4. Go to **Extensions → ⋮ → Developer Load** and enter the URL printed by `yarn serve-pkgs`, e.g.:
-
-   ```
-   https://127.0.0.1:8005/pkg/kube-prometheus-stack-metrics-0.2.0/kube-prometheus-stack-metrics-0.2.0.umd.min.js
-   ```
-
-5. Click **Load**. The extension will appear immediately. Check **"Persist extension by creating custom resource"** to keep it across reloads.
+`yarn verify-bundle` alone asserts the built UMD exists, clears a size floor, parses, and still
+carries its UMD wrapper — the failure mode a green webpack build does not catch.
 
 ### Build
 
