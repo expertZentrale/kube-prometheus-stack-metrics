@@ -1,0 +1,72 @@
+name: Quality
+
+# The existing "Test extensions build" workflow delegates wholesale to a reusable workflow in
+# rancher/dashboard, so no steps can be added to it. These checks therefore live in their own
+# workflow. Together they are what makes a green PR mean more than "webpack exited 0":
+#   typecheck     - the shared webpack config runs ts-loader with `transpileOnly: true`, so nothing
+#                   in the build path ever checks types.
+#   lint          - .eslintrc.js existed but referenced configs that are not installed, so eslint
+#                   aborted on every run and was never actually enforced.
+#   verify-bundle - the build never parses or loads its own output; a toolchain bump can emit a
+#                   green build and an unloadable bundle.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A dependency-bump PR that gets rebased repeatedly should not queue up redundant runs.
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  quality:
+    name: Typecheck, lint and bundle check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      # Fails on any TypeScript error. Covers pkg/**/*.ts. Note the .vue component uses
+      # `<script setup>` without lang="ts", so its body is JavaScript and is covered by lint below,
+      # not by this step.
+      - name: Typecheck
+        run: yarn typecheck
+
+      # --quiet gates on error-severity rules only. The repo's style rules are all 'warn' and are
+      # reported by `yarn lint:all` without blocking, so CI fails on defects rather than formatting.
+      - name: Lint
+        run: yarn lint
+
+      - name: Report lint warnings (non-blocking)
+        if: always()
+        run: yarn lint:all || true
+
+      - name: Build extension
+        run: yarn build-pkg kube-prometheus-stack-metrics
+
+      - name: Verify built bundle
+        run: yarn verify-bundle
+
+      - name: Upload built bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kube-prometheus-stack-metrics-dist
+          path: dist-pkg/
+          retention-days: 14
+          if-no-files-found: error

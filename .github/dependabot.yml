@@ -1,6 +1,14 @@
 version: 2
+
+# This repo has exactly one direct dependency (@rancher/shell). Everything else in yarn.lock is a
+# transitive build-time dependency of it, and none of it ships: the delivered UMD bundle contains
+# only the first-party sources plus small polyfill shims. With `dependency-type: all` and no
+# grouping, Dependabot was opening one PR per transitive lockfile bump — 22 open at once, each
+# rewriting the same yarn.lock, so merging any one dirtied the rest.
+#
+# The groups below collapse that into a handful of PRs per week. Majors are deliberately left
+# ungrouped so they still arrive as individual, reviewable PRs.
 updates:
-  # Enable version updates for npm dependencies in the root directory
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
@@ -8,33 +16,87 @@ updates:
       day: "monday"
       time: "03:00"
     open-pull-requests-limit: 10
+    # `include: scope` makes Dependabot append its own "(deps)" scope. The previous prefix of
+    # "chore(deps):" therefore produced titles like "chore(deps):(deps): bump ...".
     commit-message:
-      prefix: "chore(deps):"
+      prefix: "chore"
       include: "scope"
     pull-request-branch-name:
       separator: "/"
     allow:
       - dependency-type: "all"
     rebase-strategy: "auto"
+    groups:
+      babel:
+        patterns:
+          - "@babel/*"
+          - "babel-*"
+        update-types:
+          - "minor"
+          - "patch"
+      webpack-toolchain:
+        patterns:
+          - "webpack"
+          - "webpack-*"
+          - "*-loader"
+          - "*-webpack-plugin"
+          - "terser*"
+          - "postcss*"
+          - "sass*"
+          - "core-js*"
+          - "browserslist*"
+          - "caniuse*"
+        update-types:
+          - "minor"
+          - "patch"
+      aws-sdk:
+        patterns:
+          - "@aws-sdk/*"
+          - "@smithy/*"
+        update-types:
+          - "minor"
+          - "patch"
+      vue:
+        patterns:
+          - "vue"
+          - "vue-*"
+          - "@vue/*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Everything else that is only reachable through the lockfile. This is the bulk of the noise.
+      transitive-toolchain:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
-  # Enable version updates for npm dependencies in the pkg subdirectory
   - package-ecosystem: "npm"
     directory: "/pkg/kube-prometheus-stack-metrics"
     schedule:
       interval: "weekly"
       day: "monday"
       time: "03:00"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
     commit-message:
-      prefix: "chore(deps):"
+      prefix: "chore"
       include: "scope"
     pull-request-branch-name:
       separator: "/"
     allow:
       - dependency-type: "all"
     rebase-strategy: "auto"
+    groups:
+      pkg-dev-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
-  # Optional: Enable version updates for GitHub Actions
+  # Previously a no-op: the three workflows referenced reusable workflows by branch (@master), which
+  # Dependabot cannot version. quality.yml pins actions/* by tag, so this ecosystem now has work.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -43,6 +105,14 @@ updates:
       time: "03:30"
     open-pull-requests-limit: 5
     commit-message:
-      prefix: "ci(deps):"
+      prefix: "ci"
+      include: "scope"
     pull-request-branch-name:
       separator: "/"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
