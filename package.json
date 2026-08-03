@@ -3,10 +3,10 @@
   "version": "0.1.6",
   "private": false,
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "dependencies": {
-    "@rancher/shell": "^3.0.7"
+    "@rancher/shell": "^3.0.11"
   },
   "resolutions": {
     "@types/node": "~20.10.0",
@@ -19,6 +19,12 @@
     "build-pkg": "./node_modules/@rancher/shell/scripts/build-pkg.sh",
     "serve-pkgs": "./node_modules/@rancher/shell/scripts/serve-pkgs",
     "publish-pkgs": "./node_modules/@rancher/shell/scripts/extension/publish",
-    "parse-tag-name": "./node_modules/@rancher/shell/scripts/extension/parse-tag-name"
+    "parse-tag-name": "./node_modules/@rancher/shell/scripts/extension/parse-tag-name",
+    "lint": "node ./node_modules/eslint/bin/eslint.js --quiet --ext .js,.ts,.vue pkg/",
+    "lint:all": "node ./node_modules/eslint/bin/eslint.js --ext .js,.ts,.vue pkg/",
+    "lint:fix": "node ./node_modules/eslint/bin/eslint.js --fix --ext .js,.ts,.vue pkg/",
+    "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit -p pkg/kube-prometheus-stack-metrics/tsconfig.json",
+    "verify-bundle": "node ./scripts/verify-bundle.mjs",
+    "verify": "yarn typecheck && yarn lint && yarn build-pkg kube-prometheus-stack-metrics && yarn verify-bundle"
   }
 }

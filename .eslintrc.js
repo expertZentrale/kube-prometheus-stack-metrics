@@ -8,12 +8,19 @@ module.exports = {
     NodeJS: true,
     Timer:  true
   },
+  // NOTE: `standard`, `@vue/standard` and `@vue/typescript/recommended` were listed here but are
+  // not installed (they arrive via @rancher/shell only as unmet peers), which made eslint abort with
+  // a config-resolution error on every run. They are dropped so lint actually executes; the rules
+  // they contributed are covered by eslint:recommended + @typescript-eslint + vue3-recommended.
+  parser:        'vue-eslint-parser',
+  parserOptions: {
+    parser:      '@typescript-eslint/parser',
+    ecmaVersion: 2021,
+    sourceType:  'module'
+  },
   extends: [
-    'standard',
     'eslint:recommended',
     'plugin:@typescript-eslint/recommended',
-    '@vue/standard',
-    '@vue/typescript/recommended',
     'plugin:vue/vue3-recommended',
     'plugin:cypress/recommended'
   ],
@@ -238,6 +245,25 @@ module.exports = {
         'no-unreachable-loop':                  'off',
         'computed-property-spacing':            'off'
       }
+    },
+    {
+      // Build/tooling config files are CommonJS by necessity.
+      files: [
+        '*.config.js',
+        '.eslintrc.js'
+      ],
+      env:   { node: true },
+      rules: {
+        '@typescript-eslint/no-var-requires': 'off',
+        '@typescript-eslint/no-require-imports': 'off'
+      }
+    },
+    {
+      // Vue lifecycle/callback hooks are legitimately empty no-ops.
+      files: [
+        '*.vue'
+      ],
+      rules: { '@typescript-eslint/no-empty-function': 'off' }
     }
   ]
 };
